@@ -11,21 +11,58 @@ const { ConfigStore } = require('./config.cjs')
 const { scanFolder } = require('./backup.cjs')
 const { selectUploadFiles } = require('./file-drop.cjs')
 
-const APP_VERSION = '0.1.1'
+const APP_VERSION = '0.1.2'
 let mainWindow
 let tray
 let store
 let socket
 let reconnectTimer
+let heartbeatTimer
+let lastHeartbeatAt = 0
 let clipboardTimer
 let schedulerTimer
 let lastClipboardText = ''
 let lastRemoteText = ''
 let quitting = false
 const activeBackups = new Map()
+let connectionState = {
+  connected: false,
+  phase: 'starting',
+  message: '正在启动',
+  serverUrl: '',
+  connectedAt: null,
+  lastHeartbeatAt: null,
+  retryAt: null
+}
 
 function sendRenderer (event, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(`nas-link:${event}`, payload)
+}
+
+function updateConnectionState (patch) {
+  connectionState = { ...connectionState, ...patch }
+  const snapshot = { ...connectionState }
+  sendRenderer('connection', snapshot)
+  return snapshot
+}
+
+function stopRealtimeHeartbeat () {
+  clearInterval(heartbeatTimer)
+  heartbeatTimer = null
+}
+
+function startRealtimeHeartbeat (activeSocket) {
+  stopRealtimeHeartbeat()
+  lastHeartbeatAt = Date.now()
+  heartbeatTimer = setInterval(() => {
+    if (socket !== activeSocket || activeSocket.readyState !== WebSocket.OPEN) return
+    if (Date.now() - lastHeartbeatAt > 65_000) {
+      updateConnectionState({ connected: false, phase: 'stale', message: '实时连接心跳超时，正在重连' })
+      activeSocket.terminate()
+      return
+    }
+    activeSocket.send(JSON.stringify({ type: 'ping' }))
+  }, 20_000)
 }
 
 function createTrayIcon () {
@@ -116,28 +153,50 @@ async function registerDevice () {
 
 function connectRealtime () {
   clearTimeout(reconnectTimer)
+  stopRealtimeHeartbeat()
   if (socket) {
-    socket.removeAllListeners()
-    socket.close()
+    const previous = socket
+    socket = null
+    previous.removeAllListeners()
+    previous.close()
   }
   if (!store.value.token) {
-    sendRenderer('connection', { connected: false, message: '等待配置' })
+    updateConnectionState({ connected: false, phase: 'waiting', message: '等待配置', serverUrl: store.value.serverUrl, connectedAt: null, lastHeartbeatAt: null, retryAt: null })
     return
   }
-  const url = new URL(store.value.serverUrl)
+  let url
+  try {
+    url = new URL(store.value.serverUrl)
+  } catch {
+    updateConnectionState({ connected: false, phase: 'error', message: 'NAS 地址格式无效', serverUrl: store.value.serverUrl, connectedAt: null, lastHeartbeatAt: null, retryAt: null })
+    return
+  }
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   url.pathname = '/ws'
   url.searchParams.set('device_id', store.value.deviceId)
-  url.searchParams.set('token', store.value.token)
-  socket = new WebSocket(url)
-  socket.on('open', async () => {
-    sendRenderer('connection', { connected: true, message: '已连接 NAS' })
-    try { await registerDevice() } catch (error) { sendRenderer('connection', { connected: false, message: error.message }) }
+  updateConnectionState({ connected: false, phase: 'connecting', message: '正在建立实时连接', serverUrl: store.value.serverUrl, connectedAt: null, lastHeartbeatAt: null, retryAt: null })
+
+  const activeSocket = new WebSocket(url, { headers: authHeaders() })
+  socket = activeSocket
+  activeSocket.on('open', async () => {
+    if (socket !== activeSocket) return
+    const now = new Date().toISOString()
+    lastHeartbeatAt = Date.now()
+    updateConnectionState({ connected: true, phase: 'connected', message: '实时通道正常', serverUrl: store.value.serverUrl, connectedAt: now, lastHeartbeatAt: now, retryAt: null })
+    startRealtimeHeartbeat(activeSocket)
+    try {
+      await registerDevice()
+    } catch {
+      updateConnectionState({ connected: true, phase: 'connected', message: '实时通道正常，设备登记稍后重试' })
+    }
   })
-  socket.on('message', async raw => {
+  activeSocket.on('message', async raw => {
     try {
       const message = JSON.parse(String(raw))
-      if (message.type === 'clipboard') {
+      if (message.type === 'ready' || message.type === 'pong') {
+        lastHeartbeatAt = Date.now()
+        updateConnectionState({ connected: true, phase: 'connected', message: '实时通道正常', lastHeartbeatAt: new Date(lastHeartbeatAt).toISOString(), retryAt: null })
+      } else if (message.type === 'clipboard') {
         const item = message.item
         if (store.value.clipboardMode === 'auto' && item.source_device !== store.value.deviceId) {
           lastRemoteText = item.content
@@ -154,11 +213,17 @@ function connectRealtime () {
       }
     } catch {}
   })
-  socket.on('close', () => {
-    sendRenderer('connection', { connected: false, message: '连接已断开，正在重试' })
+  activeSocket.on('close', () => {
+    if (socket !== activeSocket) return
+    socket = null
+    stopRealtimeHeartbeat()
+    const retryAt = new Date(Date.now() + 5000).toISOString()
+    updateConnectionState({ connected: false, phase: 'retrying', message: '连接已断开，5 秒后重试', lastHeartbeatAt: null, retryAt })
     reconnectTimer = setTimeout(connectRealtime, 5000)
   })
-  socket.on('error', error => sendRenderer('connection', { connected: false, message: error.message }))
+  activeSocket.on('error', () => {
+    if (socket === activeSocket) updateConnectionState({ connected: false, phase: 'error', message: '实时连接失败，正在等待重试' })
+  })
 }
 
 async function readClipboardText () {
@@ -330,6 +395,7 @@ function startBackupScheduler () {
 
 function setupIpc () {
   ipcMain.handle('config:get', () => store.value)
+  ipcMain.handle('connection:get', () => ({ ...connectionState }))
   ipcMain.handle('config:import', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile'],

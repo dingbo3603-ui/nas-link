@@ -50,6 +50,7 @@ const samples = {
 function registerMocks () {
   const handlers = {
     'config:get': () => config,
+    'connection:get': () => ({ connected: true, phase: 'connected', message: '实时通道正常', serverUrl: config.serverUrl, connectedAt: new Date().toISOString(), lastHeartbeatAt: new Date().toISOString(), retryAt: null }),
     'config:save': (_event, next) => Object.assign(config, next),
     'dashboard:get': () => samples.dashboard,
     'devices:list': () => samples.devices,

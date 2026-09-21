@@ -45,6 +45,9 @@ button { cursor: pointer; }
 .connection-card small { color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-dot { width: 9px; height: 9px; border-radius: 50%; background: #9aa5b7; box-shadow: 0 0 0 4px rgba(154,165,183,.14); }
 .status-dot.connected { background: #37bf8c; box-shadow: 0 0 0 4px rgba(55,191,140,.15); }
+.status-dot.connecting { background: #6f84e8; box-shadow: 0 0 0 4px rgba(111,132,232,.15); animation: connection-pulse 1.4s ease-in-out infinite; }
+.status-dot.connected.connecting { animation: none; }
+@keyframes connection-pulse { 50% { opacity: .45; transform: scale(.82); } }
 
 .main { height: 100vh; overflow: auto; padding: 0 38px 48px; }
 .topbar { height: 104px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 20; background: linear-gradient(180deg, var(--bg) 76%, rgba(243,246,251,0)); }

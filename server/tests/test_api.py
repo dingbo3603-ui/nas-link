@@ -3,7 +3,9 @@ import os
 import tempfile
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 
 TEST_ROOT = Path(tempfile.mkdtemp(prefix="nas-link-api-"))
@@ -32,8 +34,10 @@ def test_library_clipboard_search_and_backup_round_trip() -> None:
             )
             assert response.status_code == 200
 
-        with client.websocket_connect(f"/ws?device_id=macbook-home&token={TEST_TOKEN}") as websocket:
+        with client.websocket_connect("/ws?device_id=macbook-home", headers=HEADERS) as websocket:
             assert websocket.receive_json()["type"] == "ready"
+            websocket.send_json({"type": "ping"})
+            assert websocket.receive_json()["type"] == "pong"
             response = client.post(
                 "/api/clipboard",
                 headers=HEADERS,
@@ -43,6 +47,11 @@ def test_library_clipboard_search_and_backup_round_trip() -> None:
             message = websocket.receive_json()
             assert message["type"] == "clipboard"
             assert message["item"]["content"] == "跨设备测试文字"
+
+        with pytest.raises(WebSocketDisconnect) as rejected:
+            with client.websocket_connect(f"/ws?device_id=legacy-client&token={TEST_TOKEN}"):
+                pass
+        assert rejected.value.code == 4401
 
         upload = client.post(
             "/api/library/upload",
@@ -86,4 +95,3 @@ def test_library_clipboard_search_and_backup_round_trip() -> None:
             f"/api/backups/{snapshot_id}/restore", headers=HEADERS, params={"path": "reports/test.txt"}
         )
         assert restored.content == content
-

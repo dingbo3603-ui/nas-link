@@ -5,7 +5,7 @@ class DeviceRegistration(BaseModel):
     id: str = Field(min_length=3, max_length=100)
     name: str = Field(min_length=1, max_length=100)
     platform: str = Field(min_length=1, max_length=50)
-    app_version: str = Field(default="0.1.0", max_length=30)
+    app_version: str = Field(default="0.1.2", max_length=30)
 
 
 class ClipboardCreate(BaseModel):
@@ -37,4 +37,3 @@ class OrganizeDecision(BaseModel):
     tags: list[str]
     summary: str
     confidence: float
-

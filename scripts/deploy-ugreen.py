@@ -157,7 +157,7 @@ bootstrap.write_text(json.dumps({{
     "serverUrl": {public_url!r},
     "token": token,
     "deviceName": "",
-    "version": "0.1.0",
+    "version": "0.1.2",
 }}, ensure_ascii=False, indent=2), encoding="utf-8")
 bootstrap.chmod(0o600)
 

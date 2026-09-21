@@ -14,7 +14,7 @@ from .deepseek import DeepSeekClient, _basic_keywords
 from .organizer import Organizer
 from .realtime import ConnectionManager
 from .schemas import BackupPlan, ClipboardCreate, DeviceRegistration, SearchRequest
-from .security import _valid_token, require_token
+from .security import require_token, valid_websocket_token
 from .storage import StorageService
 
 
@@ -72,7 +72,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="NAS Link",
-    version="0.1.0",
+    version="0.1.2",
     description="Private clipboard, file organization, search and backup hub for a home NAS.",
     lifespan=lifespan,
 )
@@ -150,8 +150,11 @@ def list_devices() -> list[dict]:
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, device_id: str = Query(...), token: str = Query(default="")) -> None:
-    if not _valid_token(token):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    device_id: str = Query(..., min_length=1, max_length=100),
+) -> None:
+    if not valid_websocket_token(websocket.headers.get("authorization")):
         await websocket.close(code=4401)
         return
     await realtime.connect(device_id, websocket)

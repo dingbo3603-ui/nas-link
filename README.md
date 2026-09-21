@@ -10,7 +10,7 @@ NAS Link 是为一台绿联 DX4600+、一台 MacBook 和两台 Windows 电脑设
 
 ## 当前版本
 
-版本：`0.1.1 MVP`
+版本：`0.1.2 MVP`
 
 当前已经实现服务器、Windows/macOS 共用桌面客户端和 Docker 部署配置。智能资料库支持点击批量选择，也支持从 Finder 或资源管理器直接拖入多个文件，上传后自动去重、分类和索引。MVP 支持文字剪贴板；图片与富文本剪贴板将在后续版本加入。
 
@@ -134,6 +134,7 @@ data/
 ## 安全边界
 
 - 服务使用共享长令牌鉴权；不要开放到公网。
+- WebSocket 只接受 `Authorization` 请求头中的令牌，不接受会进入访问日志的 URL 令牌；客户端每 20 秒执行一次心跳检查。
 - DeepSeek密钥只存在 NAS `.env`，服务器不把密钥返回客户端。
 - 默认会向 DeepSeek发送文件名、类型和最多一小段可提取文本。若只允许元数据，把 `NAS_LINK_DEEPSEEK_CONTENT_MODE` 改为 `metadata`。
 - 如果家庭局域网中存在不可信设备，应在 NAS 反向代理中启用 HTTPS，并把客户端地址改为 HTTPS。

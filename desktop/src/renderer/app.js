@@ -1,6 +1,7 @@
 const state = {
   page: 'overview',
   config: null,
+  connection: null,
   dashboard: null,
   devices: [],
   clipboard: [],
@@ -82,9 +83,18 @@ function showPage (page) {
 }
 
 function renderConnection (payload) {
-  $('#connection-dot').classList.toggle('connected', Boolean(payload.connected))
-  $('#connection-title').textContent = payload.connected ? 'NAS 已连接' : 'NAS 未连接'
-  $('#connection-detail').textContent = payload.message || state.config?.serverUrl || '等待配置'
+  state.connection = payload || state.connection || {}
+  const connection = state.connection
+  const dot = $('#connection-dot')
+  dot.classList.toggle('connected', Boolean(connection.connected))
+  dot.classList.toggle('connecting', ['starting', 'connecting', 'retrying'].includes(connection.phase))
+  const titles = { starting: '正在启动', connecting: '正在连接', retrying: '正在重连', waiting: '等待配置', stale: '连接超时', error: 'NAS 未连接' }
+  $('#connection-title').textContent = connection.connected ? 'NAS 已连接' : (titles[connection.phase] || 'NAS 未连接')
+  if (connection.connected && connection.lastHeartbeatAt) {
+    $('#connection-detail').textContent = `实时通道正常 · ${new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(connection.lastHeartbeatAt))}`
+  } else {
+    $('#connection-detail').textContent = connection.message || connection.serverUrl || state.config?.serverUrl || '等待配置'
+  }
 }
 
 function renderSetup () {
@@ -267,7 +277,9 @@ async function refreshOverview () {
 }
 
 async function loadAll () {
-  state.config = await window.nasLink.getConfig()
+  const [config, connection] = await Promise.all([window.nasLink.getConfig(), window.nasLink.getConnectionState()])
+  state.config = config
+  renderConnection(connection)
   renderSetup(); renderSettings(); renderClipboardMode(); renderBackupFolders()
   if (!state.config.token) { showPage('settings'); return }
   await refreshOverview()

@@ -4,6 +4,7 @@ const listeners = new Map()
 
 contextBridge.exposeInMainWorld('nasLink', {
   getConfig: () => ipcRenderer.invoke('config:get'),
+  getConnectionState: () => ipcRenderer.invoke('connection:get'),
   importConfig: () => ipcRenderer.invoke('config:import'),
   saveConfig: config => ipcRenderer.invoke('config:save', config),
   getDashboard: () => ipcRenderer.invoke('dashboard:get'),

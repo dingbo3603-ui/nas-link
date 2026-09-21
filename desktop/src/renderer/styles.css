@@ -141,6 +141,11 @@ button { cursor: pointer; }
 .library-drop-copy small { display: block; color: var(--muted); font-size: 11px; }
 .library-drop-status { max-width: 260px; padding: 7px 11px; border-radius: 999px; color: #60708c; background: rgba(255,255,255,.76); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .library-dropzone.is-uploading .library-drop-status { color: var(--blue); background: white; }
+.library-upload-errors { margin: -4px 0 16px; padding: 12px 14px; border: 1px solid #f2b8c4; border-radius: 13px; color: #8d2f43; background: #fff3f5; font-size: 11px; line-height: 1.55; }
+.library-upload-errors strong { display: block; margin-bottom: 4px; color: #a5344e; font-size: 12px; }
+.library-upload-errors ul { margin: 0; padding-left: 18px; }
+.library-upload-errors li + li { margin-top: 3px; }
+.library-upload-errors.hidden { display: none; }
 .segmented { display: flex; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: white; }
 .segmented button { border: 0; padding: 8px 13px; border-radius: 9px; background: transparent; color: var(--muted); font-size: 11px; }
 .segmented button.active { color: var(--blue-dark); background: #eaf0ff; font-weight: 700; }

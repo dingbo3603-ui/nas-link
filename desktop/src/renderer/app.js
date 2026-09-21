@@ -51,13 +51,13 @@ function formatDate (value) {
   return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date)
 }
 
-function toast (message, isError = false) {
+function toast (message, isError = false, duration = 2800) {
   const element = $('#toast')
   element.textContent = message
   element.classList.toggle('error', isError)
   element.classList.add('show')
   clearTimeout(toast.timer)
-  toast.timer = setTimeout(() => element.classList.remove('show'), 2800)
+  toast.timer = setTimeout(() => element.classList.remove('show'), duration)
 }
 
 async function run (work, successMessage) {
@@ -292,20 +292,42 @@ async function uploadLibrary () {
 
 async function finishLibraryUpload (result) {
   const uploaded = result?.items?.length || 0
-  const failed = result?.failed?.length || 0
+  const failures = result?.failed || []
+  const failed = failures.length
+  const errorBox = $('#library-upload-errors')
   if (uploaded) { await refreshLibrary(); await refreshOverview() }
-  if (failed) toast(`已保存 ${uploaded} 个，${failed} 个未成功`, true)
+  errorBox.classList.toggle('hidden', !failed)
+  errorBox.innerHTML = failed
+    ? `<strong>${escapeHtml(`有 ${failed} 个文件未保存`)}</strong><ul>${failures.slice(0, 5).map(item => `<li>${escapeHtml(item.name)}：${escapeHtml(item.reason)}</li>`).join('')}</ul>${failed > 5 ? `<div>另有 ${failed - 5} 个文件未显示</div>` : ''}`
+    : ''
+  if (failed) toast(`已保存 ${uploaded} 个，${failed} 个未成功：${failures[0].reason}`, true, 7000)
   else if (uploaded) toast(`已保存 ${uploaded} 个文件到智能资料库`)
 }
 
 async function uploadDroppedFiles (files) {
-  const paths = files.map(file => window.nasLink.getPathForFile(file)).filter(Boolean)
-  if (!paths.length) { toast('没有读取到可上传的文件', true); return }
+  const paths = []
+  const pathFailures = []
+  for (const file of files) {
+    try {
+      const filePath = window.nasLink.getPathForFile(file)
+      if (filePath) paths.push(filePath)
+      else pathFailures.push({ name: file.name || '未知文件', reason: '无法取得本地路径；请先把文件保存到本地磁盘后再拖入' })
+    } catch {
+      pathFailures.push({ name: file.name || '未知文件', reason: '无法取得本地路径；请先把文件保存到本地磁盘后再拖入' })
+    }
+  }
+  if (pathFailures.length) await finishLibraryUpload({ items: [], failed: pathFailures })
+  if (!paths.length) {
+    if (!pathFailures.length) toast('没有读取到可上传的文件', true)
+    return
+  }
   const dropzone = $('#library-dropzone')
   dropzone.classList.add('is-uploading')
   dropzone.setAttribute('aria-busy', 'true')
+  $('#library-drop-status').textContent = '正在扫描文件夹…'
   try {
     const result = await run(() => window.nasLink.uploadLibraryPaths(paths))
+    if (pathFailures.length) result.failed = [...pathFailures, ...(result.failed || [])]
     await finishLibraryUpload(result)
   } finally {
     dropzone.classList.remove('is-uploading')

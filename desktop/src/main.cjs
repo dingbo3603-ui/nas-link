@@ -9,9 +9,9 @@ const { WebSocket } = require('ws')
 
 const { ConfigStore } = require('./config.cjs')
 const { scanFolder } = require('./backup.cjs')
-const { selectUploadFiles } = require('./file-drop.cjs')
+const { describeFileAccessError, selectUploadFiles } = require('./file-drop.cjs')
 
-const APP_VERSION = '0.1.2'
+const APP_VERSION = '0.1.3'
 let mainWindow
 let tray
 let store
@@ -263,35 +263,69 @@ async function startClipboardWatcher () {
 }
 
 function requestStream (method, endpoint, filePath) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const target = new URL(`${store.value.serverUrl}${endpoint}`)
-      const transport = target.protocol === 'https:' ? https : http
-      const stat = await fs.promises.stat(filePath)
-      const request = transport.request(target, {
-        method,
-        headers: authHeaders({
-          'Content-Type': 'application/octet-stream',
-          'Content-Length': stat.size
-        })
-      }, response => {
-        const chunks = []
-        response.on('data', chunk => chunks.push(chunk))
-        response.on('end', () => {
-          const text = Buffer.concat(chunks).toString('utf8')
-          let data
-          try { data = text ? JSON.parse(text) : null } catch { data = { detail: text } }
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            reject(new Error(typeof data?.detail === 'string' ? data.detail : `上传失败 ${response.statusCode}`))
-          } else resolve(data)
-        })
-      })
-      request.on('error', reject)
-      fs.createReadStream(filePath).pipe(request)
-    } catch (error) {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = value => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+    const fail = error => {
+      if (settled) return
+      settled = true
       reject(error)
     }
+
+    ;(async () => {
+      let request
+      let input
+      try {
+        const target = new URL(`${store.value.serverUrl}${endpoint}`)
+        const transport = target.protocol === 'https:' ? https : http
+        const stat = await fs.promises.stat(filePath)
+        input = fs.createReadStream(filePath)
+        request = transport.request(target, {
+          method,
+          headers: authHeaders({
+            'Content-Type': 'application/octet-stream',
+            'Content-Length': stat.size
+          })
+        }, response => {
+          const chunks = []
+          response.on('data', chunk => chunks.push(chunk))
+          response.on('error', fail)
+          response.on('aborted', () => fail(new Error('NAS 在上传完成前中断了连接')))
+          response.on('end', () => {
+            const text = Buffer.concat(chunks).toString('utf8')
+            let data
+            try { data = text ? JSON.parse(text) : null } catch { data = { detail: text } }
+            if (response.statusCode < 200 || response.statusCode >= 300) {
+              fail(new Error(typeof data?.detail === 'string' ? data.detail : `上传失败 ${response.statusCode}`))
+            } else finish(data)
+          })
+        })
+        request.setTimeout(10 * 60 * 1000, () => request.destroy(new Error('上传等待超时，请检查局域网连接后重试')))
+        request.on('error', fail)
+        input.on('error', error => {
+          request.destroy()
+          fail(error)
+        })
+        input.pipe(request)
+      } catch (error) {
+        if (input) input.destroy()
+        if (request) request.destroy()
+        fail(error)
+      }
+    })()
   })
+}
+
+function describeUploadError (error) {
+  if (['EACCES', 'EPERM', 'ENOENT', 'EBUSY'].includes(error?.code)) return describeFileAccessError(error)
+  if (['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'ETIMEDOUT'].includes(error?.code)) {
+    return '无法把文件传到 NAS，请确认电脑和 NAS 在同一网络后重试'
+  }
+  return error?.message || '上传失败'
 }
 
 function uniqueDownloadPath (filename) {
@@ -441,19 +475,26 @@ function setupIpc () {
     let completed = 0
     const total = accepted.length
 
-    for (const file of accepted) {
-      sendRenderer('library-upload-progress', {
-        phase: 'upload', current: completed + 1, total, filename: file.name,
-        message: `正在保存 ${completed + 1}/${total}：${file.name}`
-      })
-      try {
-        const query = new URLSearchParams({ filename: file.name, source_device: store.value.deviceId })
-        items.push(await requestStream('POST', `/api/library/upload?${query}`, file.path))
-      } catch (error) {
-        failed.push({ name: file.name, reason: error.message || '上传失败' })
+    let nextIndex = 0
+    async function uploadWorker () {
+      while (nextIndex < total) {
+        const file = accepted[nextIndex++]
+        try {
+          const query = new URLSearchParams({ filename: file.name, source_device: store.value.deviceId })
+          items.push(await requestStream('POST', `/api/library/upload?${query}`, file.path))
+        } catch (error) {
+          failed.push({ name: file.name, reason: describeUploadError(error) })
+        }
+        completed += 1
+        sendRenderer('library-upload-progress', {
+          phase: 'upload', current: completed, total, filename: file.name,
+          message: `正在保存 ${completed}/${total}：${file.name}`
+        })
       }
-      completed += 1
     }
+
+    const workerCount = Math.min(3, total)
+    await Promise.all(Array.from({ length: workerCount }, () => uploadWorker()))
 
     sendRenderer('library-upload-progress', {
       phase: 'complete', current: completed, total, uploaded: items.length, failed: failed.length,

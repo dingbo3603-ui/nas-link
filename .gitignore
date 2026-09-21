@@ -1,0 +1,14 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+node_modules/
+dist/
+out/
+release/
+nas-link-client-config.json
+*.log
+.DS_Store
+Thumbs.db
+data/

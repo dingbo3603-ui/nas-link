@@ -1,0 +1,29 @@
+services:
+  nas-link-server:
+    build:
+      context: ./server
+    container_name: nas-link-server
+    restart: unless-stopped
+    user: "${NAS_LINK_UID:-1000}:${NAS_LINK_GID:-10}"
+    ports:
+      - "${NAS_LINK_PORT:-8766}:8765"
+    environment:
+      NAS_LINK_TOKEN: "${NAS_LINK_TOKEN:?Set NAS_LINK_TOKEN in .env}"
+      NAS_LINK_DATA_ROOT: /data
+      NAS_LINK_CLIPBOARD_TTL_MINUTES: "${NAS_LINK_CLIPBOARD_TTL_MINUTES:-60}"
+      NAS_LINK_AUTO_ORGANIZE: "${NAS_LINK_AUTO_ORGANIZE:-true}"
+      NAS_LINK_DEEPSEEK_CONTENT_MODE: "${NAS_LINK_DEEPSEEK_CONTENT_MODE:-snippet}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      DEEPSEEK_BASE_URL: "${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+      DEEPSEEK_CLASSIFY_MODEL: "${DEEPSEEK_CLASSIFY_MODEL:-deepseek-flash}"
+      DEEPSEEK_ANSWER_MODEL: "${DEEPSEEK_ANSWER_MODEL:-deepseek-v4-pro}"
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true

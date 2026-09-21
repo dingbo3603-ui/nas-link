@@ -1,0 +1,53 @@
+{
+  "name": "nas-link-desktop",
+  "version": "0.1.0",
+  "description": "NAS Link desktop client for Windows and macOS",
+  "main": "src/main.cjs",
+  "author": "NAS Link",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "icons": "node scripts/rasterize-icon.cjs",
+    "test": "node --test \"test/*.test.cjs\"",
+    "package": "electron-builder --dir",
+    "dist:win": "electron-builder --win nsis --x64",
+    "dist:mac": "electron-builder --mac dmg"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "electron": "^44.4.3",
+    "electron-builder": "^26.0.12",
+    "sharp": "^0.35.4"
+  },
+  "build": {
+    "appId": "com.naslink.desktop",
+    "productName": "NAS Link",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "artifactName": "NAS-Link-${version}-${os}-${arch}.${ext}",
+    "win": {
+      "icon": "build/icon.ico",
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "target": "dmg",
+      "category": "public.app-category.utilities"
+    }
+  }
+}

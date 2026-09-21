@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="background" x1="130" y1="88" x2="902" y2="936" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4F76FF"/>
+      <stop offset="0.53" stop-color="#6A63DF"/>
+      <stop offset="1" stop-color="#43D1AD"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="332" y1="288" x2="712" y2="744" gradientUnits="userSpaceOnUse">
+      <stop stop-color="white" stop-opacity="0.94"/>
+      <stop offset="1" stop-color="white" stop-opacity="0.68"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="42" stdDeviation="38" flood-color="#243A98" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+  <rect x="56" y="56" width="912" height="912" rx="244" fill="url(#background)"/>
+  <circle cx="804" cy="212" r="166" fill="white" opacity="0.08"/>
+  <circle cx="172" cy="842" r="220" fill="#61E4C2" opacity="0.10"/>
+  <g filter="url(#shadow)">
+    <path d="M286 322C286 280 320 246 362 246H662C704 246 738 280 738 322V702C738 744 704 778 662 778H362C320 778 286 744 286 702V322Z" fill="url(#glass)"/>
+    <path d="M286 420H738" stroke="#536FF4" stroke-opacity="0.26" stroke-width="24"/>
+    <path d="M372 548H652M372 642H588" stroke="#536FF4" stroke-width="42" stroke-linecap="round"/>
+    <circle cx="370" cy="334" r="24" fill="#536FF4"/>
+    <circle cx="448" cy="334" r="24" fill="#55D0AF"/>
+  </g>
+  <g fill="white" stroke="#5D70E6" stroke-width="18">
+    <circle cx="226" cy="292" r="61"/>
+    <circle cx="798" cy="302" r="61"/>
+    <circle cx="812" cy="738" r="61"/>
+  </g>
+  <g fill="none" stroke="white" stroke-opacity="0.72" stroke-width="18" stroke-linecap="round">
+    <path d="M266 337L326 406"/>
+    <path d="M753 348L698 416"/>
+    <path d="M761 706L702 654"/>
+  </g>
+</svg>

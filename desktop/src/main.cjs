@@ -9,8 +9,9 @@ const { WebSocket } = require('ws')
 
 const { ConfigStore } = require('./config.cjs')
 const { scanFolder } = require('./backup.cjs')
+const { selectUploadFiles } = require('./file-drop.cjs')
 
-const APP_VERSION = '0.1.0'
+const APP_VERSION = '0.1.1'
 let mainWindow
 let tray
 let store
@@ -367,16 +368,40 @@ function setupIpc () {
     return { ok: true }
   })
   ipcMain.handle('clipboard:clear', () => apiJson('/api/clipboard', { method: 'DELETE' }))
+  async function uploadLibraryPaths (filePaths) {
+    const { accepted, rejected } = await selectUploadFiles(filePaths)
+    const items = []
+    const failed = [...rejected]
+    let completed = 0
+    const total = accepted.length
+
+    for (const file of accepted) {
+      sendRenderer('library-upload-progress', {
+        phase: 'upload', current: completed + 1, total, filename: file.name,
+        message: `正在保存 ${completed + 1}/${total}：${file.name}`
+      })
+      try {
+        const query = new URLSearchParams({ filename: file.name, source_device: store.value.deviceId })
+        items.push(await requestStream('POST', `/api/library/upload?${query}`, file.path))
+      } catch (error) {
+        failed.push({ name: file.name, reason: error.message || '上传失败' })
+      }
+      completed += 1
+    }
+
+    sendRenderer('library-upload-progress', {
+      phase: 'complete', current: completed, total, uploaded: items.length, failed: failed.length,
+      message: failed.length ? `已保存 ${items.length} 个，${failed.length} 个未成功` : `已保存 ${items.length} 个文件`
+    })
+    return { items, failed }
+  }
+
   ipcMain.handle('library:choose-upload', async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile', 'multiSelections'] })
-    if (result.canceled) return []
-    const uploaded = []
-    for (const filePath of result.filePaths) {
-      const query = new URLSearchParams({ filename: path.basename(filePath), source_device: store.value.deviceId })
-      uploaded.push(await requestStream('POST', `/api/library/upload?${query}`, filePath))
-    }
-    return uploaded
+    if (result.canceled) return { items: [], failed: [] }
+    return await uploadLibraryPaths(result.filePaths)
   })
+  ipcMain.handle('library:upload-paths', (_event, filePaths) => uploadLibraryPaths(filePaths))
   ipcMain.handle('library:list', (_event, statusValue) => apiJson(`/api/library/files${statusValue ? `?status=${encodeURIComponent(statusValue)}` : ''}`))
   ipcMain.handle('library:search', (_event, query) => apiJson('/api/library/search', { method: 'POST', body: JSON.stringify({ query }) }))
   ipcMain.handle('library:download', async (_event, id) => downloadEndpoint(`/api/library/files/${encodeURIComponent(id)}/download`, 'NAS-Link-file'))

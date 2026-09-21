@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 const listeners = new Map()
 
@@ -13,7 +13,9 @@ contextBridge.exposeInMainWorld('nasLink', {
   sendClipboard: text => ipcRenderer.invoke('clipboard:send', text),
   applyClipboard: text => ipcRenderer.invoke('clipboard:apply', text),
   clearClipboard: () => ipcRenderer.invoke('clipboard:clear'),
+  getPathForFile: file => webUtils.getPathForFile(file),
   chooseAndUploadLibrary: () => ipcRenderer.invoke('library:choose-upload'),
+  uploadLibraryPaths: paths => ipcRenderer.invoke('library:upload-paths', paths),
   listLibrary: status => ipcRenderer.invoke('library:list', status),
   searchLibrary: query => ipcRenderer.invoke('library:search', query),
   downloadLibraryFile: id => ipcRenderer.invoke('library:download', id),
@@ -28,7 +30,7 @@ contextBridge.exposeInMainWorld('nasLink', {
   restoreBackupFile: (snapshotId, relativePath) => ipcRenderer.invoke('backup:restore', snapshotId, relativePath),
   openLocalPath: filePath => ipcRenderer.invoke('shell:show-item', filePath),
   on: (eventName, callback) => {
-    const allowed = new Set(['connection', 'clipboard', 'file-offer', 'backup-progress', 'library-updated', 'config'])
+    const allowed = new Set(['connection', 'clipboard', 'file-offer', 'backup-progress', 'library-updated', 'library-upload-progress', 'config'])
     if (!allowed.has(eventName)) return () => {}
     const wrapped = (_event, payload) => callback(payload)
     ipcRenderer.on(`nas-link:${eventName}`, wrapped)

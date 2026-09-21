@@ -104,6 +104,11 @@
 
       <section id="page-library" class="page">
         <div class="section-intro"><div><span class="eyebrow blue">智能收件箱</span><h2>不必先想好放在哪里。</h2><p>文件先安全入库，再按类型和内容归档；每次移动都可追踪、可撤销。</p></div><button id="library-upload" class="button primary">＋ 批量存入 NAS</button></div>
+        <button id="library-dropzone" class="library-dropzone" type="button" aria-label="拖入文件或点击选择文件" aria-describedby="library-drop-status">
+          <span class="library-drop-icon">⇩</span>
+          <span class="library-drop-copy"><strong>把文件拖到这里，松手就保存</strong><small>支持一次拖入多个文件；原文件仍保留在电脑中</small></span>
+          <span id="library-drop-status" class="library-drop-status" aria-live="polite">等待文件</span>
+        </button>
         <div class="filter-bar">
           <button class="filter active" data-status="">全部</button>
           <button class="filter" data-status="organized">已归档</button>

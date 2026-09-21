@@ -274,8 +274,31 @@ async function loadAll () {
 }
 
 async function uploadLibrary () {
-  const items = await run(() => window.nasLink.chooseAndUploadLibrary(), '文件已进入智能收件箱')
-  if (items?.length) { await refreshLibrary(); await refreshOverview() }
+  const result = await run(() => window.nasLink.chooseAndUploadLibrary())
+  await finishLibraryUpload(result)
+}
+
+async function finishLibraryUpload (result) {
+  const uploaded = result?.items?.length || 0
+  const failed = result?.failed?.length || 0
+  if (uploaded) { await refreshLibrary(); await refreshOverview() }
+  if (failed) toast(`已保存 ${uploaded} 个，${failed} 个未成功`, true)
+  else if (uploaded) toast(`已保存 ${uploaded} 个文件到智能资料库`)
+}
+
+async function uploadDroppedFiles (files) {
+  const paths = files.map(file => window.nasLink.getPathForFile(file)).filter(Boolean)
+  if (!paths.length) { toast('没有读取到可上传的文件', true); return }
+  const dropzone = $('#library-dropzone')
+  dropzone.classList.add('is-uploading')
+  dropzone.setAttribute('aria-busy', 'true')
+  try {
+    const result = await run(() => window.nasLink.uploadLibraryPaths(paths))
+    await finishLibraryUpload(result)
+  } finally {
+    dropzone.classList.remove('is-uploading')
+    dropzone.removeAttribute('aria-busy')
+  }
 }
 
 async function performBackup (folderPath) {
@@ -344,6 +367,24 @@ document.addEventListener('click', async event => {
 $$('.nav-item').forEach(button => button.addEventListener('click', () => button.dataset.page && showPage(button.dataset.page)))
 $('#quick-upload').addEventListener('click', uploadLibrary)
 $('#library-upload').addEventListener('click', uploadLibrary)
+$('#library-dropzone').addEventListener('click', uploadLibrary)
+let libraryDragDepth = 0
+$('#library-dropzone').addEventListener('dragenter', event => {
+  event.preventDefault(); libraryDragDepth += 1; event.currentTarget.classList.add('is-dragover')
+})
+$('#library-dropzone').addEventListener('dragover', event => {
+  event.preventDefault(); event.dataTransfer.dropEffect = 'copy'
+})
+$('#library-dropzone').addEventListener('dragleave', event => {
+  event.preventDefault(); libraryDragDepth = Math.max(0, libraryDragDepth - 1)
+  if (!libraryDragDepth) event.currentTarget.classList.remove('is-dragover')
+})
+$('#library-dropzone').addEventListener('drop', async event => {
+  event.preventDefault(); libraryDragDepth = 0; event.currentTarget.classList.remove('is-dragover')
+  await uploadDroppedFiles([...event.dataTransfer.files])
+})
+document.addEventListener('dragover', event => event.preventDefault())
+document.addEventListener('drop', event => event.preventDefault())
 $('#quick-copy').addEventListener('click', () => run(() => window.nasLink.sendCurrentClipboard(), '当前剪贴板已发送'))
 $('#send-clipboard').addEventListener('click', async () => {
   const text = $('#clipboard-compose').value
@@ -393,6 +434,11 @@ window.nasLink.on('connection', renderConnection)
 window.nasLink.on('clipboard', async () => { if (state.page === 'clipboard') await refreshClipboard() })
 window.nasLink.on('file-offer', async () => { toast('收到一个新文件'); await refreshOverview() })
 window.nasLink.on('library-updated', async () => { if (state.page === 'library') await refreshLibrary(); await refreshOverview() })
+window.nasLink.on('library-upload-progress', progress => {
+  const status = $('#library-drop-status')
+  if (progress.phase === 'upload') status.textContent = progress.message
+  if (progress.phase === 'complete') status.textContent = progress.message
+})
 window.nasLink.on('config', config => { state.config = config; renderSettings(); renderBackups() })
 window.nasLink.on('backup-progress', progress => {
   const banner = $('#backup-progress')

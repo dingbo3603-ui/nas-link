@@ -40,6 +40,10 @@ const samples = {
   backups: [
     { id: 's1', root_name: '工作文档', status: 'complete', total_files: 830, total_bytes: 2456789012, completed_at: new Date().toISOString() },
     { id: 's2', root_name: '设计资料', status: 'complete', total_files: 192, total_bytes: 12456789012, completed_at: '2026-09-20T12:00:00Z' }
+  ],
+  library: [
+    { id: 'f1', original_name: '德国站广告报表.xlsx', extension: '.xlsx', relative_path: '电商运营/广告报表/2026/09/德国站广告报表.xlsx', category: '电商运营', subcategory: '广告报表', summary: '德国站九月广告表现与搜索词数据', status: 'organized' },
+    { id: 'f2', original_name: '供应商报价单.pdf', extension: '.pdf', relative_path: '商务资料/报价单/2026/09/供应商报价单.pdf', category: '商务资料', subcategory: '报价单', summary: '供应商最新产品报价', status: 'organized' }
   ]
 }
 
@@ -52,9 +56,10 @@ function registerMocks () {
     'clipboard:list': () => [],
     'transfer:list': () => samples.transfers,
     'backup:list': () => samples.backups,
-    'library:list': () => [],
+    'library:list': () => samples.library,
     'clipboard:send-current': () => ({}),
-    'library:choose-upload': () => [],
+    'library:choose-upload': () => ({ items: [], failed: [] }),
+    'library:upload-paths': () => ({ items: [], failed: [] }),
     'backup:choose-folder': () => null,
     'shell:show-item': () => null
   }
@@ -85,6 +90,9 @@ app.whenReady().then(async () => {
   await window.loadFile(path.join(__dirname, '..', 'src', 'renderer', 'index.html'))
   await new Promise(resolve => setTimeout(resolve, 1000))
   await capture(window, 'qa-overview.png')
+  await window.webContents.executeJavaScript("document.querySelector('[data-page=library]').click()")
+  await new Promise(resolve => setTimeout(resolve, 600))
+  await capture(window, 'qa-library.png')
   await window.webContents.executeJavaScript("document.querySelector('[data-page=backup]').click()")
   await new Promise(resolve => setTimeout(resolve, 600))
   await capture(window, 'qa-backup.png')

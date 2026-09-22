@@ -60,6 +60,10 @@ function toast (message, isError = false, duration = 2800) {
   toast.timer = setTimeout(() => element.classList.remove('show'), duration)
 }
 
+function hasConfiguredToken () {
+  return Boolean(state.config?.tokenConfigured || state.config?.token)
+}
+
 async function run (work, successMessage) {
   try {
     const result = await work()
@@ -98,7 +102,7 @@ function renderConnection (payload) {
 }
 
 function renderSetup () {
-  $('#setup-banner').classList.toggle('hidden', Boolean(state.config?.token))
+  $('#setup-banner').classList.toggle('hidden', hasConfiguredToken())
 }
 
 function renderDashboard () {
@@ -230,7 +234,8 @@ function renderSettings () {
   const config = state.config
   if (!config) return
   $('#setting-server').value = config.serverUrl
-  $('#setting-token').value = config.token
+  $('#setting-token').value = ''
+  $('#setting-token').placeholder = hasConfiguredToken() ? '令牌已保存；留空不会修改' : '在 NAS .env 中设置的长令牌'
   $('#setting-device').value = config.deviceName
   $('#setting-clipboard').value = config.clipboardMode
   $('#setting-interval').value = String(config.backupEveryHours)
@@ -248,25 +253,25 @@ function renderSearch () {
 }
 
 async function refreshClipboard () {
-  if (!state.config?.token) return
+  if (!hasConfiguredToken()) return
   state.clipboard = await run(() => window.nasLink.getClipboard()).catch(() => state.clipboard)
   renderClipboard()
 }
 
 async function refreshLibrary () {
-  if (!state.config?.token) return
+  if (!hasConfiguredToken()) return
   state.library = await run(() => window.nasLink.listLibrary(state.libraryStatus)).catch(() => state.library)
   renderLibrary()
 }
 
 async function refreshBackups () {
-  if (!state.config?.token) return
+  if (!hasConfiguredToken()) return
   state.backups = await run(() => window.nasLink.listBackups()).catch(() => state.backups)
   renderBackups()
 }
 
 async function refreshOverview () {
-  if (!state.config?.token) return
+  if (!hasConfiguredToken()) return
   const settled = await Promise.allSettled([
     window.nasLink.getDashboard(), window.nasLink.getDevices(), window.nasLink.listTransfers()
   ])
@@ -281,7 +286,7 @@ async function loadAll () {
   state.config = config
   renderConnection(connection)
   renderSetup(); renderSettings(); renderClipboardMode(); renderBackupFolders()
-  if (!state.config.token) { showPage('settings'); return }
+  if (!hasConfiguredToken()) { showPage('settings'); return }
   await refreshOverview()
 }
 
@@ -473,7 +478,11 @@ window.nasLink.on('library-upload-progress', progress => {
   if (progress.phase === 'upload') status.textContent = progress.message
   if (progress.phase === 'complete') status.textContent = progress.message
 })
-window.nasLink.on('config', config => { state.config = config; renderSettings(); renderBackups() })
+window.nasLink.on('config', async config => {
+  state.config = config
+  renderSetup(); renderSettings(); renderBackups()
+  if (hasConfiguredToken()) await refreshOverview()
+})
 window.nasLink.on('backup-progress', progress => {
   const banner = $('#backup-progress')
   banner.classList.toggle('hidden', progress.phase === 'complete' || progress.phase === 'error')

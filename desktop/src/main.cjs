@@ -7,11 +7,11 @@ const https = require('node:https')
 const { pipeline } = require('node:stream/promises')
 const { WebSocket } = require('ws')
 
-const { ConfigStore } = require('./config.cjs')
+const { ConfigStore, configForRenderer, mergeSettingsInput } = require('./config.cjs')
 const { scanFolder } = require('./backup.cjs')
 const { describeFileAccessError, selectUploadFiles } = require('./file-drop.cjs')
 
-const APP_VERSION = '0.1.3'
+const APP_VERSION = '0.1.4'
 let mainWindow
 let tray
 let store
@@ -161,7 +161,14 @@ function connectRealtime () {
     previous.close()
   }
   if (!store.value.token) {
-    updateConnectionState({ connected: false, phase: 'waiting', message: '等待配置', serverUrl: store.value.serverUrl, connectedAt: null, lastHeartbeatAt: null, retryAt: null })
+    try {
+      store.reload()
+      sendRenderer('config', configForRenderer(store.value))
+    } catch {}
+  }
+  if (!store.value.token) {
+    updateConnectionState({ connected: false, phase: 'waiting', message: '等待本地配置，5 秒后自动重试', serverUrl: store.value.serverUrl, connectedAt: null, lastHeartbeatAt: null, retryAt: null })
+    reconnectTimer = setTimeout(connectRealtime, 5000)
     return
   }
   let url
@@ -404,7 +411,7 @@ async function runBackup (folderPath) {
     }
     const snapshot = await apiJson(`/api/backups/${encodeURIComponent(plan.snapshot_id)}/commit`, { method: 'POST' })
     store.update({ lastBackupAt: new Date().toISOString() })
-    sendRenderer('config', store.value)
+    sendRenderer('config', configForRenderer(store.value))
     sendRenderer('backup-progress', { root, phase: 'complete', snapshot, message: '备份完成' })
     return snapshot
   })().finally(() => activeBackups.delete(root))
@@ -428,7 +435,7 @@ function startBackupScheduler () {
 }
 
 function setupIpc () {
-  ipcMain.handle('config:get', () => store.value)
+  ipcMain.handle('config:get', () => configForRenderer(store.value))
   ipcMain.handle('connection:get', () => ({ ...connectionState }))
   ipcMain.handle('config:import', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -444,16 +451,16 @@ function setupIpc () {
     })
     connectRealtime()
     await registerDevice()
-    return config
+    return configForRenderer(config)
   })
   ipcMain.handle('config:save', async (_event, input) => {
     const previousUrl = store.value.serverUrl
     const previousToken = store.value.token
-    const config = store.save(input)
+    const config = store.save(mergeSettingsInput(store.value, input))
     app.setLoginItemSettings({ openAtLogin: Boolean(config.launchAtLogin) })
     if (previousUrl !== config.serverUrl || previousToken !== config.token) connectRealtime()
     await registerDevice()
-    return config
+    return configForRenderer(config)
   })
   ipcMain.handle('dashboard:get', () => apiJson('/api/dashboard'))
   ipcMain.handle('devices:list', () => apiJson('/api/devices'))
@@ -532,7 +539,7 @@ function setupIpc () {
     const folder = { path: result.filePaths[0], name: path.basename(result.filePaths[0]), enabled: true }
     const duplicate = store.value.backupFolders.some(item => path.resolve(item.path) === path.resolve(folder.path))
     if (!duplicate) store.update({ backupFolders: [...store.value.backupFolders, folder] })
-    sendRenderer('config', store.value)
+    sendRenderer('config', configForRenderer(store.value))
     return folder
   })
   ipcMain.handle('backup:run', (_event, folderPath) => runBackup(folderPath))

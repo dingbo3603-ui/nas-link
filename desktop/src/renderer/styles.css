@@ -67,9 +67,6 @@ button { cursor: pointer; }
 .muted { color: var(--muted); font-size: 12px; }
 .hidden { display: none !important; }
 
-.setup-banner { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding: 16px 18px; border-radius: 16px; background: #fff2d8; border: 1px solid #f5d993; }
-.setup-banner strong { font-size: 14px; }
-.setup-banner p { margin: 4px 0 0; color: #806830; font-size: 12px; }
 .page { display: none; animation: reveal .22s ease; }
 .page.active { display: block; }
 @keyframes reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }

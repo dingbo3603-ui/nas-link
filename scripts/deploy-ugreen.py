@@ -33,7 +33,6 @@ ALLOWLIST = (
     "server/app/organizer.py",
     "server/app/realtime.py",
     "server/app/schemas.py",
-    "server/app/security.py",
     "server/app/storage.py",
 )
 
@@ -94,7 +93,6 @@ import base64
 import json
 import os
 import pathlib
-import secrets
 import shutil
 
 root = pathlib.Path({remote_dir!r})
@@ -122,10 +120,8 @@ for relative in ("data", "data/index", "data/dropbox", "data/library", "data/bac
 env_path = root / ".env"
 env_was_present = env_path.exists()
 if not env_was_present:
-    token = secrets.token_urlsafe(48)
     env_path.write_text(
         "\\n".join([
-            f"NAS_LINK_TOKEN={{token}}",
             "NAS_LINK_PORT=8766",
             "NAS_LINK_UID=1000",
             "NAS_LINK_GID=10",
@@ -142,24 +138,26 @@ if not env_was_present:
         encoding="utf-8",
     )
     env_path.chmod(0o600)
+else:
+    clean_lines = [
+        line for line in env_path.read_text(encoding="utf-8").splitlines()
+        if not line.startswith("NAS_LINK_TOKEN=")
+    ]
+    temporary_env = env_path.with_name(".env.codex-new")
+    temporary_env.write_text("\\n".join(clean_lines).rstrip() + "\\n", encoding="utf-8")
+    temporary_env.chmod(0o600)
+    os.replace(temporary_env, env_path)
 
-values = {{}}
-for line in env_path.read_text(encoding="utf-8").splitlines():
-    if line and not line.lstrip().startswith("#") and "=" in line:
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip()
-token = values.get("NAS_LINK_TOKEN", "")
-if len(token) < 24:
-    raise RuntimeError("NAS_LINK_TOKEN must contain at least 24 characters")
-
-bootstrap = root / "data" / "index" / "client-bootstrap.json"
-bootstrap.write_text(json.dumps({{
-    "serverUrl": {public_url!r},
-    "token": token,
-    "deviceName": "",
-    "version": "0.1.2",
-}}, ensure_ascii=False, indent=2), encoding="utf-8")
-bootstrap.chmod(0o600)
+for obsolete_relative in (
+    "server/app/security.py",
+    "scripts/new-token.ps1",
+    "scripts/rotate-client-token.py",
+    "scripts/bootstrap-client.cjs",
+    "data/index/client-bootstrap.json",
+):
+    obsolete = root.joinpath(*pathlib.PurePosixPath(obsolete_relative).parts)
+    if obsolete.is_file():
+        obsolete.unlink()
 
 print(json.dumps({{
     "uploaded_files": len(payload),
@@ -184,7 +182,7 @@ def verify(remote: Remote, remote_dir: str) -> dict:
     output = result.stdout.strip().splitlines()
     health_line = next((line for line in reversed(output) if line.startswith("{") and '"ok"' in line), "{}")
     health = json.loads(health_line)
-    if not health.get("ok") or not health.get("security_ready"):
+    if not health.get("ok") or health.get("access_mode") != "trusted_lan_no_auth":
         raise RuntimeError(f"NAS health verification failed: {health}")
     return health
 
@@ -195,7 +193,7 @@ def verify_workstation(public_url: str) -> dict:
         try:
             with urllib.request.urlopen(f"{public_url.rstrip('/')}/health", timeout=8) as response:
                 health = json.loads(response.read().decode("utf-8"))
-            if health.get("ok") and health.get("security_ready"):
+            if health.get("ok") and health.get("access_mode") == "trusted_lan_no_auth":
                 return health
             raise RuntimeError(f"Unexpected workstation health response: {health}")
         except Exception as exc:
@@ -211,12 +209,6 @@ def main() -> int:
     parser.add_argument("--target", default=os.environ.get("NAS_LINK_SSH_TARGET", DEFAULT_TARGET))
     parser.add_argument("--remote-dir", default=DEFAULT_REMOTE_DIR)
     parser.add_argument("--public-url", default=DEFAULT_PUBLIC_URL)
-    parser.add_argument(
-        "--bootstrap-output",
-        type=Path,
-        default=ROOT / "release" / "nas-link-client-config.json",
-        help="Local path for the secret client bootstrap file.",
-    )
     args = parser.parse_args()
     remote = Remote(args.target)
 
@@ -233,7 +225,6 @@ def main() -> int:
         "public_url": args.public_url,
         "files": list(payload),
         "preserve": [".env", "data/"],
-        "bootstrap_output": str(args.bootstrap_output),
     }
     if not args.apply:
         print(json.dumps({"dry_run": True, **plan}, ensure_ascii=False, indent=2))
@@ -244,11 +235,6 @@ def main() -> int:
     remote.call(f"cd {shlex.quote(args.remote_dir)} && docker compose up -d --build")
     health = verify(remote, args.remote_dir)
     workstation_health = verify_workstation(args.public_url)
-    remote.copy_from(f"{args.remote_dir}/data/index/client-bootstrap.json", args.bootstrap_output)
-    try:
-        os.chmod(args.bootstrap_output, 0o600)
-    except OSError:
-        pass
     print(
         json.dumps(
             {
@@ -256,8 +242,6 @@ def main() -> int:
                 "verified": True,
                 "health": health,
                 "workstation_readback": workstation_health,
-                "bootstrap_output": str(args.bootstrap_output),
-                "warning": "The bootstrap file contains a secret. Import it on trusted devices, then protect or remove it.",
             },
             ensure_ascii=False,
             indent=2,

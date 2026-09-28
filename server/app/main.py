@@ -5,7 +5,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 
 from .config import get_settings
@@ -14,7 +14,6 @@ from .deepseek import DeepSeekClient, _basic_keywords
 from .organizer import Organizer
 from .realtime import ConnectionManager
 from .schemas import BackupPlan, ClipboardCreate, DeviceRegistration, SearchRequest
-from .security import require_token, valid_websocket_token
 from .storage import StorageService
 
 
@@ -72,7 +71,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="NAS Link",
-    version="0.1.2",
+    version="0.1.5",
     description="Private clipboard, file organization, search and backup hub for a home NAS.",
     lifespan=lifespan,
 )
@@ -97,12 +96,12 @@ def health() -> dict:
         "service": "nas-link-server",
         "version": app.version,
         "deepseek_configured": deepseek.configured,
-        "security_ready": settings.token != "development-token" and len(settings.token) >= 24,
+        "access_mode": "trusted_lan_no_auth",
         "time": utc_now(),
     }
 
 
-@app.get("/api/dashboard", dependencies=[Depends(require_token)])
+@app.get("/api/dashboard")
 def dashboard() -> dict:
     cleanup_clipboard()
     file_counts = {
@@ -123,7 +122,7 @@ def dashboard() -> dict:
     }
 
 
-@app.post("/api/devices/register", dependencies=[Depends(require_token)])
+@app.post("/api/devices/register")
 def register_device(payload: DeviceRegistration, request: Request) -> dict:
     client_ip = request.client.host if request.client else None
     db.execute(
@@ -139,7 +138,7 @@ def register_device(payload: DeviceRegistration, request: Request) -> dict:
     return {"ok": True, "device": payload.model_dump()}
 
 
-@app.get("/api/devices", dependencies=[Depends(require_token)])
+@app.get("/api/devices")
 def list_devices() -> list[dict]:
     online = realtime.online_ids()
     result = db.fetch_all("SELECT * FROM devices ORDER BY last_seen DESC")
@@ -154,9 +153,6 @@ async def websocket_endpoint(
     websocket: WebSocket,
     device_id: str = Query(..., min_length=1, max_length=100),
 ) -> None:
-    if not valid_websocket_token(websocket.headers.get("authorization")):
-        await websocket.close(code=4401)
-        return
     await realtime.connect(device_id, websocket)
     try:
         await websocket.send_json({"type": "ready", "device_id": device_id, "server_time": utc_now()})
@@ -170,7 +166,7 @@ async def websocket_endpoint(
         await realtime.disconnect(device_id, websocket)
 
 
-@app.post("/api/clipboard", dependencies=[Depends(require_token)])
+@app.post("/api/clipboard")
 async def create_clipboard(payload: ClipboardCreate) -> dict:
     cleanup_clipboard()
     item_id = str(uuid.uuid4())
@@ -196,7 +192,7 @@ async def create_clipboard(payload: ClipboardCreate) -> dict:
     return item
 
 
-@app.get("/api/clipboard", dependencies=[Depends(require_token)])
+@app.get("/api/clipboard")
 def clipboard_history(limit: int = Query(default=30, ge=1, le=100)) -> list[dict]:
     cleanup_clipboard()
     return db.fetch_all(
@@ -205,13 +201,13 @@ def clipboard_history(limit: int = Query(default=30, ge=1, le=100)) -> list[dict
     )
 
 
-@app.delete("/api/clipboard", dependencies=[Depends(require_token)])
+@app.delete("/api/clipboard")
 def clear_clipboard() -> dict:
     db.execute("DELETE FROM clipboard_items")
     return {"ok": True}
 
 
-@app.post("/api/library/upload", dependencies=[Depends(require_token)])
+@app.post("/api/library/upload")
 async def upload_library_file(
     request: Request,
     background: BackgroundTasks,
@@ -224,7 +220,7 @@ async def upload_library_file(
     return item
 
 
-@app.get("/api/library/files", dependencies=[Depends(require_token)])
+@app.get("/api/library/files")
 def list_library_files(
     status_value: str | None = Query(default=None, alias="status"),
     limit: int = Query(default=100, ge=1, le=500),
@@ -236,7 +232,7 @@ def list_library_files(
     return [Database.decode_file(row) for row in rows]
 
 
-@app.get("/api/library/files/{file_id}/download", dependencies=[Depends(require_token)])
+@app.get("/api/library/files/{file_id}/download")
 def download_library_file(file_id: str) -> FileResponse:
     item = db.fetch_one("SELECT * FROM files WHERE id=?", (file_id,))
     if not item:
@@ -247,12 +243,12 @@ def download_library_file(file_id: str) -> FileResponse:
     return FileResponse(path, filename=item["original_name"], media_type=item.get("mime_type"))
 
 
-@app.post("/api/library/files/{file_id}/organize", dependencies=[Depends(require_token)])
+@app.post("/api/library/files/{file_id}/organize")
 async def organize_file(file_id: str) -> dict:
     return await organizer.process(file_id)
 
 
-@app.post("/api/library/files/{file_id}/undo", dependencies=[Depends(require_token)])
+@app.post("/api/library/files/{file_id}/undo")
 def undo_organize(file_id: str) -> dict:
     try:
         return organizer.undo(file_id)
@@ -260,7 +256,7 @@ def undo_organize(file_id: str) -> dict:
         raise HTTPException(status_code=404, detail="File not found") from None
 
 
-@app.post("/api/library/search", dependencies=[Depends(require_token)])
+@app.post("/api/library/search")
 async def search_library(payload: SearchRequest) -> dict:
     try:
         keywords = await deepseek.expand_query(payload.query)
@@ -298,7 +294,7 @@ async def search_library(payload: SearchRequest) -> dict:
     return {**answer, "keywords": keywords, "files": selected}
 
 
-@app.post("/api/transfers", dependencies=[Depends(require_token)])
+@app.post("/api/transfers")
 async def upload_transfer(
     request: Request,
     filename: str = Query(..., min_length=1, max_length=500),
@@ -314,7 +310,7 @@ async def upload_transfer(
     return transfer
 
 
-@app.get("/api/transfers", dependencies=[Depends(require_token)])
+@app.get("/api/transfers")
 def list_transfers(device_id: str | None = Query(default=None), limit: int = Query(default=50, ge=1, le=200)) -> list[dict]:
     if device_id:
         return db.fetch_all(
@@ -324,7 +320,7 @@ def list_transfers(device_id: str | None = Query(default=None), limit: int = Que
     return db.fetch_all("SELECT * FROM transfers ORDER BY created_at DESC LIMIT ?", (limit,))
 
 
-@app.get("/api/transfers/{transfer_id}/download", dependencies=[Depends(require_token)])
+@app.get("/api/transfers/{transfer_id}/download")
 def download_transfer(transfer_id: str) -> FileResponse:
     item = db.fetch_one("SELECT * FROM transfers WHERE id=?", (transfer_id,))
     if not item:
@@ -336,27 +332,27 @@ def download_transfer(transfer_id: str) -> FileResponse:
     return FileResponse(path, filename=item["filename"])
 
 
-@app.post("/api/backups/plan", dependencies=[Depends(require_token)])
+@app.post("/api/backups/plan")
 def create_backup_plan(payload: BackupPlan) -> dict:
     return storage.create_backup_plan(payload)
 
 
-@app.put("/api/backups/{snapshot_id}/blobs/{sha256}", dependencies=[Depends(require_token)])
+@app.put("/api/backups/{snapshot_id}/blobs/{sha256}")
 async def upload_backup_blob(snapshot_id: str, sha256: str, request: Request) -> dict:
     return await storage.receive_blob(request, snapshot_id, sha256)
 
 
-@app.post("/api/backups/{snapshot_id}/commit", dependencies=[Depends(require_token)])
+@app.post("/api/backups/{snapshot_id}/commit")
 def commit_backup(snapshot_id: str) -> dict:
     return storage.commit_snapshot(snapshot_id)
 
 
-@app.get("/api/backups", dependencies=[Depends(require_token)])
+@app.get("/api/backups")
 def list_backups(limit: int = Query(default=100, ge=1, le=500)) -> list[dict]:
     return db.fetch_all("SELECT * FROM backup_snapshots ORDER BY created_at DESC LIMIT ?", (limit,))
 
 
-@app.get("/api/backups/{snapshot_id}/manifest", dependencies=[Depends(require_token)])
+@app.get("/api/backups/{snapshot_id}/manifest")
 def backup_manifest(snapshot_id: str) -> dict:
     snapshot = db.fetch_one("SELECT * FROM backup_snapshots WHERE id=?", (snapshot_id,))
     if not snapshot:
@@ -368,7 +364,7 @@ def backup_manifest(snapshot_id: str) -> dict:
     return {**snapshot, "entries": entries}
 
 
-@app.get("/api/backups/{snapshot_id}/restore", dependencies=[Depends(require_token)])
+@app.get("/api/backups/{snapshot_id}/restore")
 def restore_backup_file(snapshot_id: str, path: str = Query(...)) -> FileResponse:
     try:
         blob, filename = storage.blob_path_for_snapshot_file(snapshot_id, path)

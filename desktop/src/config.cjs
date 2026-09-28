@@ -5,7 +5,6 @@ const crypto = require('node:crypto')
 
 const DEFAULTS = Object.freeze({
   serverUrl: 'http://192.168.31.35:8766',
-  token: '',
   deviceId: '',
   deviceName: '',
   clipboardMode: 'manual',
@@ -26,7 +25,6 @@ function sanitizeConfig (input = {}) {
   const source = { ...DEFAULTS, ...input }
   const config = { ...DEFAULTS }
   config.serverUrl = normalizeServerUrl(source.serverUrl)
-  config.token = String(source.token || '').trim()
   config.deviceId = String(source.deviceId || crypto.randomUUID())
   config.deviceName = String(source.deviceName || os.hostname()).trim().slice(0, 100)
   config.clipboardMode = ['manual', 'auto', 'off'].includes(source.clipboardMode) ? source.clipboardMode : 'manual'
@@ -44,16 +42,6 @@ function sanitizeConfig (input = {}) {
   return config
 }
 
-function configForRenderer (config) {
-  const { token, ...safe } = sanitizeConfig(config)
-  return { ...safe, token: '', tokenConfigured: Boolean(token) }
-}
-
-function mergeSettingsInput (current, input = {}) {
-  const replacement = String(input.token || '').trim()
-  return sanitizeConfig({ ...current, ...input, token: replacement || current.token })
-}
-
 class ConfigStore {
   constructor (filePath) {
     this.filePath = filePath
@@ -62,7 +50,10 @@ class ConfigStore {
 
   load () {
     try {
-      return sanitizeConfig(JSON.parse(fs.readFileSync(this.filePath, 'utf8')))
+      const source = JSON.parse(fs.readFileSync(this.filePath, 'utf8'))
+      const config = sanitizeConfig(source)
+      if (Object.hasOwn(source, 'token') || Object.hasOwn(source, 'tokenConfigured')) this.save(config)
+      return config
     } catch (error) {
       const config = sanitizeConfig()
       if (error?.code === 'ENOENT') this.save(config)
@@ -91,4 +82,4 @@ class ConfigStore {
   }
 }
 
-module.exports = { ConfigStore, DEFAULTS, configForRenderer, mergeSettingsInput, normalizeServerUrl, sanitizeConfig }
+module.exports = { ConfigStore, DEFAULTS, normalizeServerUrl, sanitizeConfig }

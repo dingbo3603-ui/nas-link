@@ -7,11 +7,11 @@ const https = require('node:https')
 const { pipeline } = require('node:stream/promises')
 const { WebSocket } = require('ws')
 
-const { ConfigStore, configForRenderer, mergeSettingsInput } = require('./config.cjs')
+const { ConfigStore } = require('./config.cjs')
 const { scanFolder } = require('./backup.cjs')
 const { describeFileAccessError, selectUploadFiles } = require('./file-drop.cjs')
 
-const APP_VERSION = '0.1.4'
+const APP_VERSION = '0.1.5'
 let mainWindow
 let tray
 let store
@@ -121,15 +121,10 @@ function showWindow () {
   mainWindow.focus()
 }
 
-function authHeaders (extra = {}) {
-  return { Authorization: `Bearer ${store.value.token}`, ...extra }
-}
-
 async function apiJson (endpoint, options = {}) {
-  if (!store.value.token) throw new Error('请先在设置中填写连接令牌')
   const response = await fetch(`${store.value.serverUrl}${endpoint}`, {
     ...options,
-    headers: authHeaders({ 'Content-Type': 'application/json', ...(options.headers || {}) })
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
   })
   const text = await response.text()
   let data
@@ -139,7 +134,6 @@ async function apiJson (endpoint, options = {}) {
 }
 
 async function registerDevice () {
-  if (!store.value.token) return
   await apiJson('/api/devices/register', {
     method: 'POST',
     body: JSON.stringify({
@@ -160,17 +154,6 @@ function connectRealtime () {
     previous.removeAllListeners()
     previous.close()
   }
-  if (!store.value.token) {
-    try {
-      store.reload()
-      sendRenderer('config', configForRenderer(store.value))
-    } catch {}
-  }
-  if (!store.value.token) {
-    updateConnectionState({ connected: false, phase: 'waiting', message: '等待本地配置，5 秒后自动重试', serverUrl: store.value.serverUrl, connectedAt: null, lastHeartbeatAt: null, retryAt: null })
-    reconnectTimer = setTimeout(connectRealtime, 5000)
-    return
-  }
   let url
   try {
     url = new URL(store.value.serverUrl)
@@ -183,7 +166,7 @@ function connectRealtime () {
   url.searchParams.set('device_id', store.value.deviceId)
   updateConnectionState({ connected: false, phase: 'connecting', message: '正在建立实时连接', serverUrl: store.value.serverUrl, connectedAt: null, lastHeartbeatAt: null, retryAt: null })
 
-  const activeSocket = new WebSocket(url, { headers: authHeaders() })
+  const activeSocket = new WebSocket(url)
   socket = activeSocket
   activeSocket.on('open', async () => {
     if (socket !== activeSocket) return
@@ -293,10 +276,10 @@ function requestStream (method, endpoint, filePath) {
         input = fs.createReadStream(filePath)
         request = transport.request(target, {
           method,
-          headers: authHeaders({
+          headers: {
             'Content-Type': 'application/octet-stream',
             'Content-Length': stat.size
-          })
+          }
         }, response => {
           const chunks = []
           response.on('data', chunk => chunks.push(chunk))
@@ -357,7 +340,7 @@ function downloadEndpoint (endpoint, fallbackName) {
   return new Promise((resolve, reject) => {
     const target = new URL(`${store.value.serverUrl}${endpoint}`)
     const transport = target.protocol === 'https:' ? https : http
-    const request = transport.get(target, { headers: authHeaders() }, async response => {
+    const request = transport.get(target, async response => {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         response.resume()
         reject(new Error(`下载失败 ${response.statusCode}`))
@@ -411,7 +394,7 @@ async function runBackup (folderPath) {
     }
     const snapshot = await apiJson(`/api/backups/${encodeURIComponent(plan.snapshot_id)}/commit`, { method: 'POST' })
     store.update({ lastBackupAt: new Date().toISOString() })
-    sendRenderer('config', configForRenderer(store.value))
+    sendRenderer('config', { ...store.value })
     sendRenderer('backup-progress', { root, phase: 'complete', snapshot, message: '备份完成' })
     return snapshot
   })().finally(() => activeBackups.delete(root))
@@ -422,7 +405,7 @@ async function runBackup (folderPath) {
 function startBackupScheduler () {
   clearInterval(schedulerTimer)
   schedulerTimer = setInterval(async () => {
-    if (!store.value.token || !store.value.backupFolders.length) return
+    if (!store.value.backupFolders.length) return
     const last = store.value.lastBackupAt ? Date.parse(store.value.lastBackupAt) : 0
     const interval = store.value.backupEveryHours * 60 * 60 * 1000
     if (Date.now() - last < interval) return
@@ -435,32 +418,15 @@ function startBackupScheduler () {
 }
 
 function setupIpc () {
-  ipcMain.handle('config:get', () => configForRenderer(store.value))
+  ipcMain.handle('config:get', () => ({ ...store.value }))
   ipcMain.handle('connection:get', () => ({ ...connectionState }))
-  ipcMain.handle('config:import', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openFile'],
-      filters: [{ name: 'NAS Link 连接配置', extensions: ['json'] }]
-    })
-    if (result.canceled) return null
-    const imported = JSON.parse(await fs.promises.readFile(result.filePaths[0], 'utf8'))
-    const config = store.update({
-      serverUrl: imported.serverUrl,
-      token: imported.token,
-      deviceName: imported.deviceName || store.value.deviceName
-    })
-    connectRealtime()
-    await registerDevice()
-    return configForRenderer(config)
-  })
   ipcMain.handle('config:save', async (_event, input) => {
     const previousUrl = store.value.serverUrl
-    const previousToken = store.value.token
-    const config = store.save(mergeSettingsInput(store.value, input))
+    const config = store.save({ ...store.value, ...input })
     app.setLoginItemSettings({ openAtLogin: Boolean(config.launchAtLogin) })
-    if (previousUrl !== config.serverUrl || previousToken !== config.token) connectRealtime()
+    if (previousUrl !== config.serverUrl) connectRealtime()
     await registerDevice()
-    return configForRenderer(config)
+    return { ...config }
   })
   ipcMain.handle('dashboard:get', () => apiJson('/api/dashboard'))
   ipcMain.handle('devices:list', () => apiJson('/api/devices'))
@@ -539,7 +505,7 @@ function setupIpc () {
     const folder = { path: result.filePaths[0], name: path.basename(result.filePaths[0]), enabled: true }
     const duplicate = store.value.backupFolders.some(item => path.resolve(item.path) === path.resolve(folder.path))
     if (!duplicate) store.update({ backupFolders: [...store.value.backupFolders, folder] })
-    sendRenderer('config', configForRenderer(store.value))
+    sendRenderer('config', { ...store.value })
     return folder
   })
   ipcMain.handle('backup:run', (_event, folderPath) => runBackup(folderPath))

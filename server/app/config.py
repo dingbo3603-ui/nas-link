@@ -8,7 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    token: str = Field(default="development-token", alias="NAS_LINK_TOKEN")
     data_root: Path = Field(default=Path("./data"), alias="NAS_LINK_DATA_ROOT")
     clipboard_ttl_minutes: int = Field(default=60, alias="NAS_LINK_CLIPBOARD_TTL_MINUTES")
     auto_organize: bool = Field(default=True, alias="NAS_LINK_AUTO_ORGANIZE")

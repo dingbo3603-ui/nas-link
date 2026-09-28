@@ -19,7 +19,7 @@ The renderer is sandboxed, has no Node integration, and loads local assets only.
 ## Known MVP limitations
 
 - Text clipboard only; images, HTML and files-on-clipboard are not synchronized yet.
-- Shared-token authentication is intended for a trusted LAN. HTTPS should be enabled before crossing an untrusted network.
+- NAS Link has no application-level login or shared token. It is intended only for a trusted home LAN and must not be exposed through router port forwarding or a public reverse proxy.
 - PDF, DOCX, XLSX and plain-text extraction are supported. OCR for scanned documents and images is not yet included.
 - Search is keyword plus DeepSeek candidate ranking, not an embedding/vector index.
 - Snapshot retention and immutable/offline replication are not automated yet.

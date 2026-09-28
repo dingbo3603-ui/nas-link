@@ -44,11 +44,6 @@
         </div>
       </header>
 
-      <div id="setup-banner" class="setup-banner hidden">
-        <div><strong>还差一步即可开始</strong><p>填写 NAS 连接令牌后，三台电脑才能安全互联。</p></div>
-        <button class="button dark" data-go="settings">去设置</button>
-      </div>
-
       <section id="page-overview" class="page active">
         <div class="hero-card">
           <div class="hero-copy">
@@ -72,7 +67,7 @@
 
         <div class="content-grid two-thirds">
           <article class="panel">
-            <div class="panel-head"><div><h3>我的设备</h3><p>同一令牌下的可信设备</p></div><button class="text-button" data-refresh="devices">刷新</button></div>
+            <div class="panel-head"><div><h3>我的设备</h3><p>同一局域网内的设备</p></div><button class="text-button" data-refresh="devices">刷新</button></div>
             <div id="device-grid" class="device-grid empty-state">暂无在线设备</div>
           </article>
           <article class="panel accent-panel">
@@ -154,13 +149,11 @@
       </section>
 
       <section id="page-settings" class="page">
-        <div class="section-intro"><div><span class="eyebrow blue">连接与隐私</span><h2>把控制权留在自己的网络里。</h2><p>令牌与设备设置只保存在本机；DeepSeek密钥仅配置在 NAS 服务端。</p></div></div>
+        <div class="section-intro"><div><span class="eyebrow blue">局域网连接</span><h2>打开就能连上自己的 NAS。</h2><p>NAS Link 在家庭局域网内直接连接；DeepSeek 密钥仅配置在 NAS 服务端。</p></div></div>
         <form id="settings-form" class="settings-grid">
           <article class="panel setting-section">
             <h3>NAS 连接</h3>
-            <button id="import-config" class="button ghost" type="button">导入 NAS Link 连接文件</button>
             <label>服务器地址<input id="setting-server" type="url" required></label>
-            <label>连接令牌<input id="setting-token" type="password" required placeholder="在 NAS .env 中设置的长令牌"></label>
             <label>设备名称<input id="setting-device" required maxlength="100"></label>
           </article>
           <article class="panel setting-section">

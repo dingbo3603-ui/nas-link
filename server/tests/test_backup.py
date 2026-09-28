@@ -9,7 +9,7 @@ from app.storage import StorageService, normalize_relative_path
 
 
 def test_backup_plan_is_deduplicated_and_rejects_traversal(tmp_path: Path) -> None:
-    settings = Settings(NAS_LINK_TOKEN="test-token-that-is-long-enough", NAS_LINK_DATA_ROOT=tmp_path)
+    settings = Settings(NAS_LINK_DATA_ROOT=tmp_path)
     settings.ensure_directories()
     service = StorageService(settings, Database(settings.db_path))
     digest = "a" * 64
@@ -23,4 +23,3 @@ def test_backup_plan_is_deduplicated_and_rejects_traversal(tmp_path: Path) -> No
     assert result["total_files"] == 1
     with pytest.raises(ValueError):
         normalize_relative_path("../../outside.txt")
-

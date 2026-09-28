@@ -10,7 +10,6 @@ from app.storage import StorageService
 
 def make_settings(tmp_path: Path, auto_organize: bool = True) -> Settings:
     settings = Settings(
-        NAS_LINK_TOKEN="test-token-that-is-long-enough",
         NAS_LINK_DATA_ROOT=tmp_path,
         NAS_LINK_AUTO_ORGANIZE=auto_organize,
         DEEPSEEK_API_KEY="",
@@ -50,4 +49,3 @@ def test_dropbox_ingest_and_reversible_organize(tmp_path: Path) -> None:
     assert restored["status"] == "needs_review"
     assert restored["relative_path"].startswith("inbox/restored/")
     assert (settings.data_root / restored["relative_path"]).exists()
-

@@ -8,7 +8,6 @@ services:
     ports:
       - "${NAS_LINK_PORT:-8766}:8765"
     environment:
-      NAS_LINK_TOKEN: "${NAS_LINK_TOKEN:?Set NAS_LINK_TOKEN in .env}"
       NAS_LINK_DATA_ROOT: /data
       NAS_LINK_CLIPBOARD_TTL_MINUTES: "${NAS_LINK_CLIPBOARD_TTL_MINUTES:-60}"
       NAS_LINK_AUTO_ORGANIZE: "${NAS_LINK_AUTO_ORGANIZE:-true}"

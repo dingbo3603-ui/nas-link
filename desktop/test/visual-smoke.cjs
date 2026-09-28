@@ -5,7 +5,6 @@ const path = require('node:path')
 const output = path.join(__dirname, '..', 'dist')
 const config = {
   serverUrl: 'http://192.168.31.35:8766',
-  token: 'visual-test-token',
   deviceId: 'qa-windows',
   deviceName: '办公室 Windows',
   clipboardMode: 'manual',
